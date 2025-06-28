@@ -124,8 +124,18 @@ public class Window {
             }
 
             File[] mcaFiles = regionDir.listFiles((dir, name) -> name.endsWith(".mca"));
+
+            // this means if you select the literal world folder the tool will still work.
+            // selecting /region IS preferred tough, so tofix maybe?
             if (mcaFiles == null || mcaFiles.length == 0) {
-                JOptionPane.showMessageDialog(f, "No region files found in: " + regionDir, "Error", JOptionPane.ERROR_MESSAGE);
+                File regionSubDir = new File(regionDir, "region");
+                if (regionSubDir.isDirectory()) {
+                    mcaFiles = regionSubDir.listFiles((dir, name) -> name.endsWith(".mca"));
+                }
+            }
+
+            if (mcaFiles == null || mcaFiles.length == 0) {
+                JOptionPane.showMessageDialog(f, "No region files found in the selected directory or its /region subfolder.", "Error", JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
