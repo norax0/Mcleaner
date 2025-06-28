@@ -1,6 +1,6 @@
 # Mcleaner
 Simple tool to optimize world size by removing inhabited chunks.
-Works by checking how much a player has been in a chunk and deleting every chunk that is minor to a set threshold.
+Works by checking how much a player has been in a chunk and deletes every chunk that is minor to a set threshold.
 
 ## HowTo?
 
