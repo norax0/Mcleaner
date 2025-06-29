@@ -1,5 +1,7 @@
 package norax.dev.Mcleaner.anvil;
 
+import norax.dev.Mcleaner.anvil.Types.Status;
+
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -39,16 +41,19 @@ public class Parser {
                 byte[] data = new byte[totalBlockLength];
                 raf.seek(pos);
                 raf.readFully(data);
+
                 long inhabitedTime = -1;
+                Status status = Status.EMPTY;
                 try {
                     int compression = data[4] & 0xFF;
                     if (compression == 2) {
                         inhabitedTime = getInhabitedTime(data);
+                        status = getChunkStatus(data);
                     }
-                } catch (Exception e) {
-                    inhabitedTime = -1;
+                } catch (Exception ignored) {
                 }
-                Chunk chunk = new Chunk(chunkX, chunkZ, i, inhabitedTime, data, timestamps[i]);
+
+                Chunk chunk = new Chunk(chunkX, chunkZ, i, inhabitedTime, status, data, timestamps[i]);
                 chunks.add(chunk);
             }
         }
@@ -108,18 +113,16 @@ public class Parser {
         ByteArrayInputStream bais = new ByteArrayInputStream(data, 5, length - 1);
         InflaterInputStream iis = new InflaterInputStream(bais);
         DataInputStream dis = new DataInputStream(new BufferedInputStream(iis));
-        return readInhabitedTime(dis);
-    }
-
-    public static long readInhabitedTime(DataInputStream dis) throws IOException {
-        byte rootType = dis.readByte();
-        if (rootType != 10)
-            throw new IOException("root is not compound");
-        dis.readUTF();
         return findInhabitedTime(dis);
     }
 
     private static long findInhabitedTime(DataInputStream dis) throws IOException {
+
+        byte rootType = dis.readByte();
+        if (rootType != 10)
+            throw new IOException("root is not compound");
+        dis.readUTF();
+
         while (true) {
             byte tagType = dis.readByte();
             if (tagType == 0)
@@ -184,4 +187,61 @@ public class Parser {
             default: throw new IOException("Unknown tag type: " + tagType);
         }
     }
+
+    private static Status getChunkStatus(byte[] data) throws IOException {
+        int length = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16)
+                | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+        int compression = data[4] & 0xFF;
+        if (compression != 2) {
+            throw new IOException("Unsupported compression type");
+        }
+
+        ByteArrayInputStream bais = new ByteArrayInputStream(data, 5, length - 1);
+        InflaterInputStream iis = new InflaterInputStream(bais);
+        DataInputStream dis = new DataInputStream(new BufferedInputStream(iis));
+
+        byte rootType = dis.readByte();
+        if (rootType != 10) throw new IOException("rott is not compound");
+        dis.readUTF();
+
+        return findStatusTag(dis);
+    }
+
+    private static Status findStatusTag(DataInputStream dis) throws IOException {
+        while (true) {
+            byte tagType;
+            try {
+                tagType = dis.readByte();
+            } catch (IOException e) {
+                return Status.EMPTY;
+            }
+
+            if (tagType == 0) break;
+
+            String name = dis.readUTF();
+            if (tagType == 8 && "Status".equals(name)) {
+                String value = dis.readUTF();
+                return "minecraft:full".equals(value) ? Status.FULL : Status.EMPTY;
+            } else if (tagType == 10) {
+                Status nested = findStatusTag(dis);
+                if (nested == Status.FULL) return Status.FULL;
+            } else if (tagType == 9) {
+                byte listType = dis.readByte();
+                int len = dis.readInt();
+                for (int i = 0; i < len; i++) {
+                    if (listType == 10) {
+                        Status nested = findStatusTag(dis);
+                        if (nested == Status.FULL) return Status.FULL;
+                    } else {
+                        skip(dis, listType);
+                    }
+                }
+            } else {
+                skip(dis, tagType);
+            }
+        }
+
+        return Status.EMPTY;
+    }
+
 }
